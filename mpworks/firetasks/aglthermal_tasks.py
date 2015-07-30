@@ -78,7 +78,7 @@ class SetupModifiedVolumeStructTask(FireTaskBase, FWSerializable):
 
             spec = snl_to_wf._snl_to_spec(snl)
             spec = update_spec_force_convergence(spec)
-            spec['run_tags'].append((strainfactor,))
+            spec['run_tags'].append(strainfactor)
             #Turn off dupefinder for deformed structure
             del spec['_dupefinder']
 
