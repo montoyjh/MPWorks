@@ -11,8 +11,8 @@ from mpworks.firetasks.vasp_setup_tasks import SetupGGAUTask
 from mpworks.snl_utils.mpsnl import get_meta_from_structure, MPStructureNL
 from mpworks.workflows.wf_settings import QA_DB, QA_VASP, QA_CONTROL
 from pymatgen import Composition
-from pymatgen.io.cifio import CifParser
-from pymatgen.io.vaspio_set import MPVaspInputSet, MPGGAVaspInputSet
+from pymatgen.io.cif import CifParser
+from pymatgen.io.vasp.sets import MPVaspInputSet, MPGGAVaspInputSet
 from pymatgen.matproj.snl import StructureNL
 
 __author__ = 'Anubhav Jain'
@@ -156,7 +156,7 @@ def snl_to_wf(snl, parameters=None):
             connections[11] = [12]
 
     wf_meta = get_meta_from_structure(snl.structure)
-    wf_meta['run_version'] = 'May 2013 (1)'
+    wf_meta['run_version'] = 'May 2013 (1)'  # not maintained
 
     if '_materialsproject' in snl.data and 'submission_id' in snl.data['_materialsproject']:
         wf_meta['submission_id'] = snl.data['_materialsproject']['submission_id']
