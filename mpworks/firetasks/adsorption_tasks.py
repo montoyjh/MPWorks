@@ -1,0 +1,107 @@
+from monty.os.path import zpath
+
+__author__ = 'weichen'
+
+
+from fireworks.utilities.fw_serializers import FWSerializable
+from fireworks.core.firework import FireTaskBase, FWAction
+from fireworks.core.firework import Firework, Workflow
+from mpworks.firetasks.vasp_io_tasks import VaspWriterTask, VaspToDBTask
+from mpworks.firetasks.custodian_task import get_custodian_task
+from fireworks.utilities.fw_utilities import get_slug
+from pymatgen import Composition
+from pymatgen.matproj.snl import StructureNL
+from mpworks.workflows import snl_to_wf
+from mpworks.firetasks.snl_tasks import AddSNLTask
+from mpworks.snl_utils.mpsnl import MPStructureNL
+from pymatgen.core.structure import Structure
+from mpworks.workflows.wf_settings import QA_VASP, QA_DB, QA_VASP_SMALL
+from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints
+
+def update_spec_adsorbate(spec, user_vasp_settings=None):
+    """
+    This method is intended to update the spec of the workflow
+    with parameters particular to adsorbate calculates e. g.
+    dipole corrections
+    """
+    # TODO: write this method
+    # TODO: Dipole corrections
+    # TODO: selective dynamics
+    fw_spec = spec
+    update_set = {"ISIF" : 0, 
+                  "LDIPOL" : "True",
+                  "IDIPOL" : 3,
+                 }
+    fw_spec['vasp']['incar'].update(update_set)
+    return fw_spec
+
+class SetupSlabTasks(FireTaskBase, FWSerializable):
+    """
+    This class sets up surface calculations for a slab calculation
+    """
+    _fw_name = "Setup Slab Tasks"
+
+    def run_task(self, fw_spec):
+        # Read structure from previous structural relaxation
+        relaxed_struct = fw_spec['output']['crystal']
+        # Generate slabs 
+        # TODO: probably should make this so we can customize 
+        #           parameters for vacuum etc.
+        slabs_confined = generate_all_slabs(relaxed_struct, 1, 5.0, 0.0,
+                                            max_normal_search = 1)
+        slabs = generate_all_slabs(relaxed_struct, 1, 6.0, 10.0,
+                                   max_normal_search = 1)
+        wf=[]
+        for i, slab in enumerate(slabs):
+            fws=[]
+            connections={}
+            miller_string = ''.join([str(n) for n in slab.miller_index])
+            f = '_'.join([Composition(d_struct.formula).alphabetical_formula, 
+                          miller_string])
+            snl = StructureNL(slab, 'Joseph Montoya <montoyjh@lbl.gov>', 
+                              projects=["Adsorption"])
+            tasks = [AddSNLTask()]
+            snl_priority = fw_spec.get('priority', 1)
+            spec = {'task_type': 'Add Slab to SNL database',
+                    'snl': snl.as_dict(),
+                    '_queueadapter': QA_DB,
+                    '_priority': snl_priority}
+            if 'snlgroup_id' in fw_spec and isinstance(snl, MPStructureNL):
+                spec['force_mpsnl'] = snl.as_dict()
+                spec['force_snlgroup_id'] = fw_spec['snlgroup_id']
+                del spec['snl']
+            fws.append(Firework(tasks, spec,
+                                name=get_slug(f + '--' + spec['task_type']),
+                                fw_id=-1000+i*10))
+            connections[-1000+i*10] = [-999+i*10]
+            spec = snl_to_wf._snl_to_spec(snl,
+                                          parameters={'exact_structure':True})
+            spec = update_spec_adsorbate(spec)
+            spec['miller_index'] = slab.miller_index
+            spec['original_task_id'] = fw_spec["task_id"]
+            spec['_priority'] = fw_spec['_priority']*2
+            #Turn off dupefinder for deformed structure
+            del spec['_dupefinder']
+            spec['task_type'] = "Optimize slab structure"
+            fws.append(Firework([VaspWriterTask(),
+                                 get_custodian_task(spec)],
+                                spec, 
+                                name=get_slug(f + '--' + spec['task_type']), 
+                                fw_id=-999+i*10))
+            
+            priority = fw_spec['_priority']*3
+            spec = {'task_type': 'VASP db insertion', 
+                    '_priority': priority,
+                    '_allow_fizzled_parents': True, 
+                    '_queueadapter': QA_DB, 
+                    'elastic_constant':"deformed_structure", 
+                    'clean_task_doc':True,
+                    'deformation_matrix':d_struct_set.deformations[i].tolist(), 
+                    'original_task_id':fw_spec["task_id"]}
+            fws.append(Firework([VaspToDBTask()], 
+                                spec, 
+                                name=get_slug(f + '--' + spec['task_type']), 
+                                fw_id=-998+i*10))
+            connections[-999+i*10] = [-998+i*10]
+            wf.append(Workflow(fws, connections))
+        return FWAction(additions=wf)
