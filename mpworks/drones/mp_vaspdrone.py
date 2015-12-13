@@ -249,6 +249,12 @@ class MPVaspDrone(VaspToDbTaskDrone):
             if 'deformed' in d['task_type']:
                 d['deformation_matrix'] = fw_dict['spec']['deformation_matrix']
                 d['original_task_id'] = fw_dict['spec']['original_task_id']
+            # Process data for surfaces
+            if 'adsorbate' in d['task_type']:
+                d['adsorbate'] = fw_dict['spec']['adsorbate']
+                d['miller_index'] = fw_dict['spec']['miller_index']
+            if 'slab' in d['task_type']:
+                d['miller_index'] = fw_dict['spec']['miller_index']
             if not self.update_duplicates:
                 if 'optimize structure' in d['task_type'] and 'output' in d:
                     # create a new SNL based on optimized structure
