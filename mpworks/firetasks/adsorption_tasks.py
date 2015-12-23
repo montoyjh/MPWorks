@@ -205,7 +205,7 @@ class SetupAdsorptionTasks(FireTaskBase, FWSerializable):
                                       projects=["Adsorption"])
                     tasks = [AddSNLTask()]
                     snl_priority = fw_spec.get('priority', 1)
-                    spec = {'task_type': 'Add Slab to SNL database',
+                    spec = {'task_type': 'Add adsorbate to SNL database',
                             'snl': snl.as_dict(),
                             '_queueadapter': QA_DB,
                             '_priority': snl_priority}
