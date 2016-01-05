@@ -124,7 +124,9 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
 
         self.additional_fields = self.get('additional_fields', {})
         self.update_duplicates = self.get('update_duplicates', False)  # off so DOS/BS doesn't get entered twice
-
+        # Hack to try and fix issue
+        # FIXME
+        self.update_duplicates = True
     def run_task(self, fw_spec):
         if '_fizzled_parents' in fw_spec and not 'prev_vasp_dir' in fw_spec:
             prev_dir = get_loc(fw_spec['_fizzled_parents'][0]['launches'][0]['launch_dir'])
