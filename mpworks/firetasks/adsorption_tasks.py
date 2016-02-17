@@ -33,8 +33,11 @@ def update_spec_adsorbate(spec, user_vasp_settings=None):
     fw_spec = spec
     update_set = {"ISIF" : 0, 
                   "LDIPOL" : "True",
-                  "IDIPOL" : 3
+                  "IDIPOL" : 3,
+                  "EDIFFG": -0.05
                  }
+    if 'RPBE' in spec['run_tags']:
+        update_set['GGA'] = 'RP'
     fw_spec['vasp']['incar'].update(update_set)
     return fw_spec
 
@@ -133,7 +136,7 @@ class SetupAdsorptionTasks(FireTaskBase, FWSerializable):
         # Generate slabs 
         # TODO: probably should make this so we can customize 
         #           parameters for vacuum, repeat etc.
-        slabs = generate_all_slabs(relaxed_struct, 1, 6.0, 10.0,
+        slabs = generate_all_slabs(relaxed_struct, 1, 8.0, 10.0,
                                    max_normal_search = 1)
         wf=[]
         i = 0
@@ -166,7 +169,7 @@ class SetupAdsorptionTasks(FireTaskBase, FWSerializable):
             spec['miller_index'] = slab.miller_index
             spec['original_task_id'] = fw_spec["task_id"]
             spec['_priority'] = fw_spec['_priority']*2
-            #Turn off dupefinder for deformed structure
+            #Turn off dupefinder for slab structures
             del spec['_dupefinder']
             spec['task_type'] = "Optimize slab structure"
             fws.append(Firework([VaspWriterTask(),
@@ -176,19 +179,21 @@ class SetupAdsorptionTasks(FireTaskBase, FWSerializable):
                                  fw_id=-999+i*10))
             
             priority = fw_spec['_priority']*3
-            spec = {'task_type': 'VASP db insertion', 
+            spec = {'task_type': 'VASP db insertion',
                     '_priority': priority,
                     '_allow_fizzled_parents': True, 
                     '_queueadapter': QA_DB, 
                     'miller_index':slab.miller_index, 
                     'clean_task_doc':True,
                     'original_task_id':fw_spec["task_id"]}
-            fws.append(Firework([VaspToDBTask()], 
+            fws.append(Firework([VaspToDBTask()],
                                 spec, 
                                 name=get_slug(f + '--' + spec['task_type']), 
                                 fw_id=-998+i*10))
             connections[-999+i*10] = [-998+i*10]
             # TODO: Hard code adsorbates for now, later make this mutable
+            adsorbate_dict = {'CO':[[0.,0.,0.],[0.,0.,1.23]]}
+            '''
             adsorbate_dict = {'H': [[0., 0., 0.]],
                                'O': [[0., 0., 0.]],
                                'OH':[[0.0, 0.0, 0.0], 
@@ -197,9 +202,9 @@ class SetupAdsorptionTasks(FireTaskBase, FWSerializable):
                                       [-1.06, -0.4, 0.8], 
                                       [-0.7, -0.3, 1.7]]
                         }
+            '''
             for ads in adsorbate_dict:
-                structs = asf.generate_adsorption_structures(ads, adsorbate_dict[ads], 
-                                                repeat = [2, 2, 1])
+                structs = asf.generate_adsorption_structures(ads, adsorbate_dict[ads])
                 for struct in structs:
                     snl = StructureNL(struct, 'Joseph Montoya <montoyjh@lbl.gov>', 
                                       projects=["Adsorption"])
