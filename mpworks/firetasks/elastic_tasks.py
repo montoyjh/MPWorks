@@ -88,7 +88,8 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             spec = {'task_type': 'Add Deformed Struct to SNL database', 
                     'snl': snl.as_dict(), 
                     '_queueadapter': QA_DB, 
-                    '_priority': snl_priority}
+                    '_priority': snl_priority,
+                    '_category': 'db'}
             if 'snlgroup_id' in fw_spec and isinstance(snl, MPStructureNL):
                 spec['force_mpsnl'] = snl.as_dict()
                 spec['force_snlgroup_id'] = fw_spec['snlgroup_id']
@@ -103,6 +104,7 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             spec['deformation_matrix'] = d_struct_set.deformations[i].tolist()
             spec['original_task_id'] = fw_spec["task_id"]
             spec['_priority'] = fw_spec['_priority']*2
+            spec['_category'] = 'vasp'
             #Turn off dupefinder for deformed structure
             del spec['_dupefinder']
             spec['task_type'] = "Optimize deformed structure"
@@ -120,7 +122,8 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
                     'elastic_constant':"deformed_structure", 
                     'clean_task_doc':True,
                     'deformation_matrix':d_struct_set.deformations[i].tolist(), 
-                    'original_task_id':fw_spec["task_id"]}
+                    'original_task_id':fw_spec["task_id"],
+                    '_category': db}
             fws.append(Firework([VaspToDBTask(), AddElasticDataToDBTask()], spec,
                                 name=get_slug(f + '--' + spec['task_type']),
                                 fw_id=-998+i*10))

@@ -32,7 +32,7 @@ def snl_to_wf_elastic(snl, parameters):
     # add the SNL to the SNL DB and figure out duplicate group
     tasks = [AddSNLTask()]
     spec = {'task_type': 'Add to SNL database', 'snl': snl.as_dict(), 
-            '_queueadapter': QA_DB, '_priority': snl_priority}
+            '_queueadapter': QA_DB, '_priority': snl_priority, '_category':'db'}
     if 'snlgroup_id' in parameters and isinstance(snl, MPStructureNL):
         spec['force_mpsnl'] = snl.as_dict()
         spec['force_snlgroup_id'] = parameters['snlgroup_id']
@@ -49,6 +49,7 @@ def snl_to_wf_elastic(snl, parameters):
     spec['run_tags'].append("origin")
     spec['_priority'] = priority
     spec['_queueadapter'] = QA_VASP
+    spec['_category'] = 'vasp'
     del spec['_dupefinder']
     spec['task_type'] = "Vasp force convergence optimize structure (2x)"
     tasks = [VaspWriterTask(), get_custodian_task(spec)]
@@ -58,14 +59,15 @@ def snl_to_wf_elastic(snl, parameters):
     # insert into DB - GGA structure optimization
     spec = {'task_type': 'VASP db insertion', '_priority': priority,
             '_allow_fizzled_parents': True, '_queueadapter': QA_DB, 
-            'clean_task_doc':True, 'elastic_constant':"force_convergence"}
-    fws.append(Firework([VaspToDBTask()], spec, 
+            'clean_task_doc':True, 'elastic_constant':"force_convergence",
+            '_category': 'db'}
+    fws.append(Firework([VaspToDBTask()], spec,
                         name=get_slug(f + '--' + spec['task_type']), fw_id=2))
     connections[1] = [2]
 
     spec = {'task_type': 'Setup Deformed Struct Task', '_priority': priority,
-                '_queueadapter': QA_CONTROL}
-    fws.append(Firework([SetupDeformedStructTask()], spec, 
+            '_queueadapter': QA_CONTROL, '_category':'control'}
+    fws.append(Firework([SetupDeformedStructTask()], spec,
                         name=get_slug(f + '--' + spec['task_type']),fw_id=3))
     connections[2] = [3]
 
