@@ -103,6 +103,9 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             spec = snl_to_wf._snl_to_spec(snl, 
                                           parameters={'exact_structure':True})
             spec = update_spec_force_convergence(spec)
+            # Get rid of the add_snl task
+            spec['mpsnl'] = snl.as_dict()
+            spec['snlgroup_id'] = fw_spec['snlgroup_id']
             spec['deformation_matrix'] = d_struct_set.deformations[i].tolist()
             spec['original_task_id'] = fw_spec["task_id"]
             spec['_priority'] = fw_spec['_priority']*2
@@ -117,7 +120,7 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
                                 fw_id=-999+i*10))
             
             priority = fw_spec['_priority']*3
-            spec = {'task_type': 'VASP db insertion', 
+            spec = {'task_type': 'VASP db insertion',
                     '_priority': priority,
                     '_allow_fizzled_parents': True, 
                     '_queueadapter': QA_DB, 
