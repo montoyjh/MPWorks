@@ -83,6 +83,7 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             f = Composition(d_struct.formula).alphabetical_formula
             snl = StructureNL(d_struct, 'Joseph Montoya <montoyjh@lbl.gov>', 
                               projects=["Elasticity"])
+            '''
             tasks = [AddSNLTask()]
             snl_priority = fw_spec.get('priority', 1)
             spec = {'task_type': 'Add Deformed Struct to SNL database', 
@@ -98,6 +99,7 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
                                 name=get_slug(f + '--' + spec['task_type']), 
                                 fw_id=-1000+i*10))
             connections[-1000+i*10] = [-999+i*10]
+            '''
             spec = snl_to_wf._snl_to_spec(snl, 
                                           parameters={'exact_structure':True})
             spec = update_spec_force_convergence(spec)
@@ -123,7 +125,7 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
                     'clean_task_doc':True,
                     'deformation_matrix':d_struct_set.deformations[i].tolist(), 
                     'original_task_id':fw_spec["task_id"],
-                    '_category': db}
+                    '_category': 'db'}
             fws.append(Firework([VaspToDBTask(), AddElasticDataToDBTask()], spec,
                                 name=get_slug(f + '--' + spec['task_type']),
                                 fw_id=-998+i*10))
