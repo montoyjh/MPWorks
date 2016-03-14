@@ -92,11 +92,15 @@ class VaspCustodianTask(FireTaskBase, FWSerializable):
         # TODO: last two env vars, i.e. SGE and LoadLeveler, are untested
         env_vars = ['PBS_NP', 'SLURM_NTASKS', 'NSLOTS', 'LOADL_TOTAL_TASKS']
         for env_var in env_vars:
-            nproc = os.environ.get(env_var, None)
-            if nproc is not None: break
-        if nproc is None:
+            total_nproc = os.environ.get(env_var, None)
+            if total_nproc is not None: break
+        if total_nproc is None:
             raise ValueError("None of the env vars {} found to set nproc!".format(env_vars))
 
+        # Testing on slurm
+        nnodes = os.environ.get('SLURM_NNODES')
+        tasks_per_node = int(total_nproc) / int(nnodes)
+        nproc = tasks_per_node * 2 # Note that you'll have to do some of the bookkeeping in submission manually
         v_exe = shlex.split('{} -n {} {}'.format(mpi_cmd, nproc, fw_env.get("vasp_cmd", "vasp")))
         gv_exe = shlex.split('{} -n {} {}'.format(mpi_cmd, nproc, fw_env.get("gvasp_cmd", "gvasp")))
 
