@@ -9,6 +9,8 @@ import logging
 import os
 import shutil
 import sys
+import requests
+import tempfile
 from monty.os.path import zpath
 from custodian.vasp.handlers import UnconvergedErrorHandler
 from fireworks.core.launchpad import LaunchPad
@@ -238,3 +240,32 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
         # not successful and not due to convergence problem - FIZZLE
         raise ValueError("DB insertion successful, but don't know how to \
                          fix this Firework! Can't continue with workflow...")
+
+def get_mueller_kpoints(poscar, min_distance='auto', include_gamma=False,
+                        kppa = 1000):
+    '''
+    This function gets the mueller kpoint mesh from the mueller group
+    servlet at JHU.
+    '''
+
+    # convert automatic grid density to min_distance parameter 
+    if min_distance == 'auto':
+        vol_per_atom = poscar.structure.volume / poscar.structure.num_sites
+        precalc_mindist = (kppa * vol_per_atom * 2**(1./2.))**(1./3.)
+    else:
+        precalc_mindist = min_distance
+    temp_dir_path = tempfile.mkdtemp()
+    cwd = os.getcwd()
+    os.chdir(temp_dir_path)
+    f = open("PRECALC", "w")
+    f.write("".join(["MINDISTANCE=", str(int(precalc_mindist)), "\n",
+                     "INCLUDEGAMMA=",str(include_gamma).upper()]))
+    f.close()
+    poscar.write_file('POSCAR')
+    url = "http://muellergroup.jhu.edu:8080/PreCalcServer/PreCalcServlet"
+    r = requests.post(url, files = [("fileupload", open("PRECALC")),
+                                    ("fileupload", open("POSCAR"))])
+    os.chdir(cwd)
+    shutil.rmtree(temp_dir_path)
+    return Kpoints.from_string(r.text)
+

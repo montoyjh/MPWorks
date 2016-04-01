@@ -6,7 +6,7 @@ from mpworks.firetasks.controller_tasks import AddEStructureTask
 from mpworks.firetasks.custodian_task import get_custodian_task
 from mpworks.firetasks.snl_tasks import AddSNLTask
 from mpworks.firetasks.vasp_io_tasks import VaspCopyTask, VaspWriterTask, \
-    VaspToDBTask
+    VaspToDBTask, get_mueller_kpoints
 from mpworks.firetasks.vasp_setup_tasks import SetupGGAUTask
 from mpworks.snl_utils.mpsnl import get_meta_from_structure, MPStructureNL
 from mpworks.workflows.wf_settings import QA_DB, QA_VASP, QA_CONTROL
@@ -39,8 +39,13 @@ def _snl_to_spec(snl, enforce_gga=False, parameters=None):
 
     incar = mpvis.get_incar(structure)
     poscar = mpvis.get_poscar(structure)
-    kpoints = mpvis.get_kpoints(structure)
     potcar = mpvis.get_potcar(structure)
+    
+    if 'mueller_kpoints' in parameters and parameters['mueller_kpoints']:
+        kpoints = get_mueller_kpoints(poscar)
+        spec['run_tags'].extend('mueller_kpoints')
+    else:
+        kpoints = mpvis.get_kpoints(structure)
 
     spec['vasp'] = {}
     spec['vasp']['incar'] = incar.as_dict()
