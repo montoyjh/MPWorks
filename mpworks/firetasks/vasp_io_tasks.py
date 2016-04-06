@@ -47,6 +47,8 @@ class VaspWriterTask(FireTaskBase, FWSerializable):
         fw_spec['vasp']['potcar'].write_file('POTCAR')
         fw_spec['vasp']['kpoints'].write_file('KPOINTS')
 
+        # Changed this to allow the writer task to pass the directory
+        return FWAction(mod_spec = {'_set':{'vasp_dir':os.getcwd()}})
 
 class VaspCopyTask(FireTaskBase, FWSerializable):
     """

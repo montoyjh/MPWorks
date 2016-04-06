@@ -4,6 +4,8 @@ import json
 from pymongo import MongoClient
 import numpy as np
 from decimal import Decimal
+import subprocess
+import shlex
 
 __author__ = 'Wei Chen'
 __credits__ = 'Joseph Montoya'
@@ -58,6 +60,27 @@ class SetupFConvergenceTask(FireTaskBase, FWSerializable):
         kpoints['kpoints'] = [k]
         return FWAction()
 
+class BulkVaspWriterTask(FireTaskBase, FWSerializable):
+    """
+    Write VASP input files based on the fw_spec
+    """
+
+    _fw_name = "Bulk Vasp Writer Task"
+
+    def run_task(self, fw_spec):
+        fw_spec['vasp']['incar'].update({"ISIF": 2})
+        fw_spec['vasp']['incar'].pop('NPAR')
+        fw_spec['vasp']['incar'].update({'NCORE':16})
+        fw_spec['vasp']['incar'].write_file('INCAR')
+        fw_spec['vasp']['poscar'].write_file('POSCAR')
+        fw_spec['vasp']['potcar'].write_file('POTCAR')
+        fw_spec['vasp']['kpoints'].write_file('KPOINTS')
+
+        # Changed this to allow the writer task to pass the directory
+        dtype = get_dtype(fw_spec['deformation_matrix'])
+        cwd = os.getcwd()
+        return FWAction(mod_spec={'_set':{'vasp_dir->{}'.format(dtype):cwd}})
+
 
 class SetupElastConstTask(FireTaskBase, FWSerializable):
     _fw_name = "Setup Elastic Constant Task"
@@ -68,6 +91,7 @@ class SetupElastConstTask(FireTaskBase, FWSerializable):
         incar.write_file("INCAR")
         return FWAction()
 
+
 class SetupDeformedStructTask(FireTaskBase, FWSerializable):
     _fw_name = "Setup Deformed Struct Task"
 
@@ -77,44 +101,28 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
         # Generate deformed structures
         d_struct_set = DeformedStructureSet(relaxed_struct, ns=0.06)
         wf=[]
+        fws = []
+        connections = {}
+        normal_ids, shear_ids = [], []
         for i, d_struct in enumerate(d_struct_set.def_structs):
-            fws=[]
-            connections={}
             f = Composition(d_struct.formula).alphabetical_formula
             snl = StructureNL(d_struct, 'Joseph Montoya <montoyjh@lbl.gov>', 
                               projects=["Elasticity"])
-            '''
-            tasks = [AddSNLTask()]
-            snl_priority = fw_spec.get('priority', 1)
-            spec = {'task_type': 'Add Deformed Struct to SNL database', 
-                    'snl': snl.as_dict(), 
-                    '_queueadapter': QA_DB, 
-                    '_priority': snl_priority,
-                    '_category': 'db'}
-            if 'snlgroup_id' in fw_spec and isinstance(snl, MPStructureNL):
-                spec['force_mpsnl'] = snl.as_dict()
-                spec['force_snlgroup_id'] = fw_spec['snlgroup_id']
-                del spec['snl']
-            fws.append(Firework(tasks, spec, 
-                                name=get_slug(f + '--' + spec['task_type']), 
-                                fw_id=-1000+i*10))
-            connections[-1000+i*10] = [-999+i*10]
-            '''
             spec = snl_to_wf._snl_to_spec(snl, 
                                           parameters={'exact_structure':True})
             spec = update_spec_force_convergence(spec)
-            # Get rid of the add_snl task
+            
             spec['mpsnl'] = snl.as_dict()
             spec['snlgroup_id'] = fw_spec['snlgroup_id']
             spec['deformation_matrix'] = d_struct_set.deformations[i].tolist()
             spec['original_task_id'] = fw_spec["task_id"]
             spec['_priority'] = fw_spec['_priority']*2
-            spec['_category'] = 'vasp'
+            spec['_category'] = 'vasp_setup'
             #Turn off dupefinder for deformed structure
             del spec['_dupefinder']
             spec['task_type'] = "Optimize deformed structure"
-            fws.append(Firework([VaspWriterTask(), SetupElastConstTask(),
-                                 get_custodian_task(spec)], 
+            # Removed custodian task
+            fws.append(Firework([BulkVaspWriterTask()], 
                                 spec, 
                                 name=get_slug(f + '--' + spec['task_type']), 
                                 fw_id=-999+i*10))
@@ -132,10 +140,53 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             fws.append(Firework([VaspToDBTask(), AddElasticDataToDBTask()], spec,
                                 name=get_slug(f + '--' + spec['task_type']),
                                 fw_id=-998+i*10))
-            connections[-999+i*10] = [-998+i*10]
-            wf.append(Workflow(fws, connections))
+            index = d_struct_set.deformations[i].check_independent()
+            if index[0] == index[1]: #normal def, connect to normal def batch
+                connections[-999+i*10] = [-998+i*10, -101]
+                normal_ids.append(-998+i*10)
+            else: # shear defo, connect to shear batch
+                connections[-999+i*10] = [-998+i*10, -100]
+                shear_ids.append(-998+i*10)
+
+        # Add bulk vasp job for normal deformations
+        spec = {'task_type': 'Normal wraprun vasp task',
+                'original_task_id':fw_spec['task_id'],
+                '_category':'vasp_wraprun'}
+        fws.append(Firework([ElasticBulkVaspTask()], spec,
+                            name=get_slug(f + '--' + spec['task_type']),
+                            fw_id = -101))
+        # Add bulk vasp job for shear deformations
+        spec = {'task_type': 'Normal wraprun vasp task',
+                'original_task_id':fw_spec['task_id'],
+                '_category':'vasp_wraprun'}
+
+        fws.append(Firework([ElasticBulkVaspTask()], spec,
+                            name=get_slug(f + '--' + spec['task_type']),
+                            fw_id = -100))
+
+        # connections - note that these determine which information is passed
+        connections[-101] = normal_ids
+        connections[-100] = shear_ids
+
+        wf.append(Workflow(fws, connections))
         return FWAction(additions=wf)
 
+
+class ElasticBulkVaspTask(FireTaskBase, FWSerializable):
+    _fw_name = "Wraprun vasp task"
+
+    def run_task(self, fw_spec):
+        dir_string = ','.join(fw_spec['vasp_dir'].values())
+        total_nprocs = os.environ.get('PBS_NP')
+        par_fws = fw_spec['_fw_env'].get('par_fws', 1) # num of fws being run in parallel
+        # this may require some manual bookkeeping, i. e.
+        # make sure you're submitting nodes that are properly divisible
+        nprocs_per_etask = int(total_nprocs) / int(par_fws) / 12 
+        procs_string = ','.join([str(nprocs_per_etask) for l in fw_spec['vasp_dir']])
+        wraprun_cmd = 'wraprun -n {} --w-cd {} vasp5'.format(procs_string,
+                                                             dir_string)
+        print wraprun_cmd
+        p = subprocess.call(shlex.split(wraprun_cmd))
 
 class AddElasticDataToDBTask(FireTaskBase, FWSerializable):
     _fw_name = "Add Elastic Data to DB"
@@ -174,16 +225,7 @@ class AddElasticDataToDBTask(FireTaskBase, FWSerializable):
                              "calculations.output":1,
                              "state":1, "task_id":1}):
             defo = k['deformation_matrix']
-            d_ind = np.nonzero(defo - np.eye(3))
-            delta = Decimal((defo - np.eye(3))[d_ind][0])
-            # Normal deformation
-            if d_ind[0] == d_ind[1]:
-                dtype = "_".join(["d", str(d_ind[0][0]), 
-                                  "{:.0e}".format(delta)])
-            # Shear deformation
-            else:
-                dtype = "_".join(["s", str(d_ind[0] + d_ind[1]),
-                                  "{:.0e}".format(delta)])
+            dtype = get_dtype(defo)
             sm = IndependentStrain(defo)
             d["deformation_tasks"][dtype] = {"state" : k["state"],
                                              "deformation_matrix" : defo,
@@ -342,3 +384,19 @@ class AddElasticDataToDBTask(FireTaskBase, FWSerializable):
         elasticity.update({"relaxation_task_id": d["relaxation_task_id"]}, 
                            d, upsert=True)
         return FWAction()
+
+def get_dtype(defo):
+    """
+    This function returns a string used to key dicts on deformations
+    """
+    d_ind = np.nonzero(defo - np.eye(3))
+    delta = Decimal((defo - np.eye(3))[d_ind][0])
+    # Normal deformation
+    if d_ind[0] == d_ind[1]:
+        dtype = "_".join(["d", str(d_ind[0][0]), 
+                          "{:.0e}".format(delta)])
+    # Shear deformation
+    else:
+        dtype = "_".join(["s", str(d_ind[0] + d_ind[1]),
+                          "{:.0e}".format(delta)])
+    return dtype
