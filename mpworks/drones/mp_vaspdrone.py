@@ -60,7 +60,6 @@ class MPVaspDrone(VaspToDbTaskDrone):
         d = self.get_task_doc(path)
         if self.additional_fields:
             d.update(self.additional_fields)  # always add additional fields, even for failed jobs
-
         try:
             d["dir_name_full"] = d["dir_name"].split(":")[1]
             d["dir_name"] = get_block_part(d["dir_name_full"])
@@ -111,7 +110,6 @@ class MPVaspDrone(VaspToDbTaskDrone):
                     .format(d["dir_name"], d["task_id"]))
 
                 #Fireworks processing
-
                 self.process_fw(path, d)
 
                 try:
@@ -346,7 +344,6 @@ class MPVaspDrone(VaspToDbTaskDrone):
 
         vasp_signals['num_signals'] = len(signals)
         vasp_signals['num_critical'] = len(critical_signals)
-
         if len(critical_signals) > 0 and d['state'] == "successful":
             d["state"] = "error"
 

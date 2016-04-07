@@ -6,6 +6,8 @@ import numpy as np
 from decimal import Decimal
 import subprocess
 import shlex
+from glob import glob
+import shutil
 
 __author__ = 'Wei Chen'
 __credits__ = 'Joseph Montoya'
@@ -79,7 +81,16 @@ class BulkVaspWriterTask(FireTaskBase, FWSerializable):
         # Changed this to allow the writer task to pass the directory
         dtype = get_dtype(fw_spec['deformation_matrix'])
         cwd = os.getcwd()
-        return FWAction(mod_spec={'_set':{'vasp_dir->{}'.format(dtype):cwd}})
+        update_spec = {'prev_vasp_dir': os.getcwd(),
+                       'prev_task_type': fw_spec['task_type'],
+                       'mpsnl': fw_spec['mpsnl'],
+                       'snlgroup_id': fw_spec['snlgroup_id'],
+                       'run_tags': fw_spec['run_tags'],
+                       'parameters': fw_spec.get('parameters')}
+        # mod spec adds all of the vasp tasks to the bulk wraprun command
+        mod_spec = {'_set':{'vasp_dir->{}'.format(dtype):cwd}}
+        return FWAction(update_spec = update_spec,
+                        mod_spec=mod_spec)
 
 
 class SetupElastConstTask(FireTaskBase, FWSerializable):
@@ -187,6 +198,16 @@ class ElasticBulkVaspTask(FireTaskBase, FWSerializable):
                                                              dir_string)
         print wraprun_cmd
         p = subprocess.call(shlex.split(wraprun_cmd))
+        # copy outputs to vasp.out for each directory
+        for vasp_dir in fw_spec['vasp_dir'].values():
+            wraprun_outs = glob(os.path.join(vasp_dir,'*_w_*.out'))
+            norm_vaspout = os.path.join(vasp_dir, 'vasp.out')
+            shutil.move(wraprun_outs[0], norm_vaspout)
+
+        return FWAction()
+
+
+
 
 class AddElasticDataToDBTask(FireTaskBase, FWSerializable):
     _fw_name = "Add Elastic Data to DB"
