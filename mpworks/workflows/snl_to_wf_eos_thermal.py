@@ -14,7 +14,7 @@ from mpworks.workflows.wf_settings import QA_DB, QA_VASP, QA_CONTROL
 from pymatgen import Composition
 from mpworks.workflows import snl_to_wf
 from mpworks.firetasks.phonon_tasks import update_spec_force_convergence
-from mpworks.firetasks.eos_thermal_tasks import SetupFConvergenceTask, SetupEoSThermalTask, SetupModifiedVolumeStructTask
+from mpworks.firetasks.eos_thermal_tasks import SetupFConvergenceTask, SetupEoSThermalTask, SetupModifiedVolumeStructTask, AddEoSThermalDataToDBTask
 
 
 def snl_to_wf_eos_thermal(snl, parameters=None):
@@ -62,6 +62,12 @@ def snl_to_wf_eos_thermal(snl, parameters=None):
     fws.append(Firework([SetupModifiedVolumeStructTask()], spec, 
                         name=get_slug(f + '--' + spec['task_type']),fw_id=3))
     connections[2] = [3]
+
+    spec = {'task_type': 'Copy EoS Results to Database Task', '_priority': priority,
+                '_queueadapter': QA_CONTROL}
+    fws.append(Firework([AddEoSThermalDataToDBTask()], spec, 
+                        name=get_slug(f + '--' + spec['task_type']),fw_id=4))
+    connections[3] = [4]
 
     wf_meta = get_meta_from_structure(snl.structure)
     wf_meta['run_version'] = 'May 2013 (1)'
