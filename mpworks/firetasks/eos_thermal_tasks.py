@@ -225,7 +225,7 @@ class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
             d["Heat_capacity_Cp_temp_list"] = eos_thermal_dict["Heat_capacity_Cp"]
             d["Volume_temp_list"] = eos_thermal_dict["Volume"]
             d["Bulk_modulus_temp_list"] = eos_thermal_dict["Bulk_modulus"]
-            d["BM_coeffs"] = eos_theraml_dict["Bulk_modulus"]
+            d["BM_coeffs"] = eos_thermal_dict["BM_coeffs"]
             jtdbest = eos_thermal_dict["Best_fit_temperature"]
 
             # Add values at specific temperatures (Debye temperature and Gruneisen parameter best fit, values at 300K)
