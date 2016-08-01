@@ -21,6 +21,9 @@ def snl_to_wf_eos_thermal(snl, parameters=None):
     fws = []
     connections = {}
     parameters = parameters if parameters else {}
+    print("Parameters = ", parameters)
+    poisson_val = parameters["poisson_ratio"]
+    print("snl_to_wf_eos_thermal: Poisson ratio = ", poisson_val)
 
     snl_priority = parameters.get('priority', 1)
     priority = snl_priority * 2  # once we start a job, keep going!
@@ -38,6 +41,8 @@ def snl_to_wf_eos_thermal(snl, parameters=None):
     fws.append(Firework(tasks, spec, name=get_slug(f + '--' + spec['task_type']), fw_id=0))
     connections[0] = [1]
 
+    print("Running structure optimization before generating different volumes")
+
     parameters["exact_structure"] = True
     # run GGA structure optimization for force convergence
     spec = snl_to_wf._snl_to_spec(snl, parameters=parameters)
@@ -50,6 +55,8 @@ def snl_to_wf_eos_thermal(snl, parameters=None):
     tasks = [VaspWriterTask(), get_custodian_task(spec)]
     fws.append(Firework(tasks, spec, name=get_slug(f + '--' + spec['task_type']), fw_id=1))
 
+    print("Setting up modified volumes")
+
     # insert into DB - GGA structure optimization
     spec = {'task_type': 'VASP db insertion', '_priority': priority,
             '_allow_fizzled_parents': True, '_queueadapter': QA_DB, 'clean_task_doc':True,
@@ -58,16 +65,51 @@ def snl_to_wf_eos_thermal(snl, parameters=None):
     connections[1] = [2]
 
     spec = {'task_type': 'Setup Modified Volume Struct Task', '_priority': priority,
-                '_queueadapter': QA_CONTROL}
+                '_queueadapter': QA_CONTROL, 'poisson_ratio': poisson_val}
     fws.append(Firework([SetupModifiedVolumeStructTask()], spec, 
                         name=get_slug(f + '--' + spec['task_type']),fw_id=3))
     connections[2] = [3]
 
-    spec = {'task_type': 'Copy EoS Results to Database Task', '_priority': priority,
-                '_queueadapter': QA_CONTROL}
+#    print("Calling EoS results to DB task")
+#    print("Setting up spec")
+ 
+#    spec = {'task_type': 'Add EoS Thermal Data to DB Task', '_priority': priority,
+#                '_queueadapter': QA_CONTROL, 'poisson_ratio': poisson_val}
+#    print("Calling firetask")
+#    fws.append(Firework([AddEoSThermalDataToDBTask()], spec, 
+#                        name=get_slug(f + '--' + spec['task_type']),fw_id=99))
+#    connections[3] = [99]
+
+    wf_meta = get_meta_from_structure(snl.structure)
+    wf_meta['run_version'] = 'May 2013 (1)'
+
+    if '_materialsproject' in snl.data and 'submission_id' in snl.data['_materialsproject']:
+        wf_meta['submission_id'] = snl.data['_materialsproject']['submission_id']
+
+    return Workflow(fws, connections, name=Composition(
+        snl.structure.composition.reduced_formula).alphabetical_formula, metadata=wf_meta)
+
+
+def snl_to_wf_eos_thermal_DB(snl, parameters=None):
+    fws = []
+    connections = {}
+    parameters = parameters if parameters else {}
+    print("Parameters = ", parameters)
+    poisson_val = parameters["poisson_ratio"]
+    print("snl_to_wf_eos_thermal: Poisson ratio = ", poisson_val)
+    original_task_id_val = parameters["original_task_id"]
+
+    snl_priority = parameters.get('priority', 1)
+    priority = snl_priority * 2  # once we start a job, keep going!
+
+    f = Composition(snl.structure.composition.reduced_formula).alphabetical_formula
+ 
+    spec = {'task_type': 'Add EoS Thermal Data to DB Task', '_priority': priority,
+                '_queueadapter': QA_CONTROL, 'poisson_ratio': poisson_val, 'original_task_id': original_task_id_val}
+    print("Calling firetask")
     fws.append(Firework([AddEoSThermalDataToDBTask()], spec, 
-                        name=get_slug(f + '--' + spec['task_type']),fw_id=4))
-    connections[3] = [4]
+                        name=get_slug(f + '--' + spec['task_type']),fw_id=99))
+#    connections[3] = [99]
 
     wf_meta = get_meta_from_structure(snl.structure)
     wf_meta['run_version'] = 'May 2013 (1)'

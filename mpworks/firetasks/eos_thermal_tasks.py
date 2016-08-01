@@ -25,7 +25,7 @@ from mpworks.snl_utils.mpsnl import get_meta_from_structure, MPStructureNL
 from pymatgen.core.structure import Structure
 from mpworks.workflows.wf_settings import QA_VASP, QA_DB, QA_VASP_SMALL
 from pymatgen.io.vasp.inputs import Poscar, Kpoints
-
+from pymatgen import MPRester
 
 def update_spec_force_convergence(spec, user_vasp_settings=None):
     fw_spec = spec
@@ -73,6 +73,7 @@ class SetupModifiedVolumeStructTask(FireTaskBase, FWSerializable):
         # Read structure from previous relaxation
         relaxed_struct = fw_spec['output']['crystal']
         modified_struct_set = ModifiedVolumeStructureSet(relaxed_struct)
+        poisson_val = fw_spec['poisson_ratio']
         wf=[]
         for i, mod_struct in enumerate(modified_struct_set.modvol_structs):
             fws=[]
@@ -108,15 +109,28 @@ class SetupModifiedVolumeStructTask(FireTaskBase, FWSerializable):
             fws.append(Firework([VaspToDBTask()], spec, name=get_slug(f + '--' + spec['task_type']), fw_id=-998+i*10))
             connections[-999+i*10] = [-998+i*10]
             wf.append(Workflow(fws, connections))
+#        fws=[]
+#        connections={}
+#        spec = {'task_type': 'Add EoS Thermal Data to DB Task', '_priority': priority,
+#         '_queueadapter': QA_DB, 'poisson_ratio': poisson_val}
+#        print("Calling firetask")
+#        fws.append(Firework([AddEoSThermalDataToDBTask()], spec,
+#                        name=get_slug(f + '--' + spec['task_type']),fw_id=-997+i*10))
+#        connections[-998+i*10] = [-997+i*10]
+#        wf.append(Workflow(fws, connections))
         return FWAction(additions=wf)        
 
 
 class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
-    _fw_name = "Add EoS Thermal Data to DB"
+    _fw_name = "Add EoS Thermal Data to DB Task"
 
     def run_task(self, fw_spec):
+	print("Running EoS Thermal Data")
         db_dir = os.environ['DB_LOC']
         db_path = os.path.join(db_dir, 'tasks_db.json')
+        print("fw_spec keys = ", fw_spec.keys())        
+	poisson_val = fw_spec['poisson_ratio']
+        print("Poisson ratio = ", poisson_val)
         i = fw_spec['original_task_id']
 #        i = fw_spec['task_id']
 
@@ -127,7 +141,7 @@ class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
         tdb.authenticate(db_creds['admin_user'], db_creds['admin_password'])
         tasks = tdb[db_creds['collection']]
         eos_thermal = tdb['eos_thermal']
-        i = 'mp-20'
+#        i = 'mp-1265'
         ndocs = tasks.find({"original_task_id": i, 
                             "state":"successful"}).count()
 #        ndocs = tasks.find({"task_id": i, 
@@ -150,7 +164,11 @@ class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
         #ss_dict = {}
         volume_values = []
         energy_values = []
-        for k in tasks.find({"original_task_id": i}, 
+        #m = MPRester("o95HBW1KgfiSA0tN")	
+        #elasticity_data = m.query(criteria={"task_id": "mp-1265"}, properties=["elasticity"])
+        #poisson_val = elasticity_data[0]["elasticity"]["poisson_ratio"]
+#        for k in tasks.find({"original_task_id": i}, 
+        for k in tasks.find({"task_id": i}, 
                             {"strainfactor":1,
                              "calculations.output":1,
                              "state":1, "task_id":1}):
@@ -213,8 +231,11 @@ class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
         if ndocs >= 21:
             eos_thermal_dict = {}
             # Perform thermal equation of state fitting and analysis
-            eos_thermal_dict = eos_thermal_properties.eos_thermal_run(calc_struct, volume_values, energy_values, ieos=2)
+#            eos_thermal_dict = eos_thermal_properties.eos_thermal_run(calc_struct, volume_values, energy_values, ieos=2)
+            eos_thermal_dict = eos_thermal_properties.eos_thermal_run(calc_struct, volume_values, energy_values, ieos=2, idebye=0, poissonratio=poisson_val)
             
+	    # Test to check if results have been calculated
+	    print("Thermal conductivity = ", eos_thermal_dict["thermal_conductivity"])
             # Add equation of state results to dict
             d["temperature"] = eos_thermal_dict["temperature"]
             d["pressure"] = eos_thermal_dict["pressure"]
