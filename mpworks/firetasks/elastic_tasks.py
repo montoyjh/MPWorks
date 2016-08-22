@@ -28,7 +28,7 @@ from pymatgen.core.structure import Structure
 from mpworks.workflows.wf_settings import QA_VASP, QA_DB, QA_VASP_SMALL
 from pymatgen.io.vasp.inputs import Poscar, Kpoints
 
-def update_spec_force_convergence(spec, user_vasp_settings=None):
+def update_spec_force_convergence(spec, user_vasp_settings=None, kpoints_density=None):
     fw_spec = spec
     update_set = {"ENCUT": 700, "EDIFF": 0.000001, "ALGO":"N", "NPAR":2}
     if user_vasp_settings and user_vasp_settings.get("incar"):
@@ -36,8 +36,8 @@ def update_spec_force_convergence(spec, user_vasp_settings=None):
     fw_spec['vasp']['incar'].update(update_set)
     old_struct=Poscar.from_dict(fw_spec["vasp"]["poscar"]).structure
     # Hackish solution to deprecated kpoints settings
-    if fw_spec["mpsnl"]["about"].get("_kpoint_density", None):
-        kpoints_density = fw_spec["mpsnl"]["about"]["_kpoint_density"] 
+    if kpoints_density:
+        kpoints_density = kpoints_density 
     else:
         kpoints_density = 7000
     k=Kpoints.automatic_density(old_struct, kpoints_density)
@@ -86,6 +86,9 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
                               projects=["Elasticity"])
             if fw_spec["mpsnl"]["about"].get("_kpoints_density"):
                 snl["about"]["_kpoints_density"] = fw_spec["mpsnl"]["about"].get("_kpoints_density")
+                kpoints_density = snl["about"]["_kpoints_density"]
+            else:
+                kpoints_density = None
             tasks = [AddSNLTask()]
             snl_priority = fw_spec.get('priority', 1)
             spec = {'task_type': 'Add Deformed Struct to SNL database',
@@ -102,7 +105,7 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             connections[-1000+i*10] = [-999+i*10]
             spec = snl_to_wf._snl_to_spec(snl, 
                                           parameters={'exact_structure':True})
-            spec = update_spec_force_convergence(spec)
+            spec = update_spec_force_convergence(spec, kpoints_density=kpoints_density)
             spec['deformation_matrix'] = d_struct_set.deformations[i].tolist()
             spec['original_task_id'] = fw_spec["task_id"]
             spec['_priority'] = fw_spec['_priority']*2
@@ -329,8 +332,8 @@ class AddElasticDataToDBTask(FireTaskBase, FWSerializable):
             d['state'] = "Fewer than 20 successful tasks completed"
             return FWAction()
 
-        if o["snl"]["about"].get("_kpoint_density"):
-            d["kpoint_density"]= o["snl"]["about"].get("_kpoint_density")
+        if o["snl"]["about"].get("_kpoints_density"):
+            d["kpoint_density"]= o["snl"]["about"].get("_kpoints_density")
 
         if d["error"]:
             raise ValueError("Elastic analysis failed: {}".format(d["error"]))

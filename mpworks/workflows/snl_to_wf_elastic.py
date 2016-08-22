@@ -45,7 +45,9 @@ def snl_to_wf_elastic(snl, parameters):
     # run GGA structure optimization for force convergence
     spec = snl_to_wf._snl_to_spec(snl, parameters=parameters)
     user_vasp_settings = parameters.get("user_vasp_settings")
-    spec = update_spec_force_convergence(spec, user_vasp_settings)
+    kpoints_density = snl.data.get("_kpoints_density", None)
+    spec = update_spec_force_convergence(spec, user_vasp_settings, 
+                                         kpoints_density)
     spec['run_tags'].append("origin")
     spec['_priority'] = priority
     spec['_queueadapter'] = QA_VASP
