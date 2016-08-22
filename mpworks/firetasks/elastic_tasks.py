@@ -35,8 +35,9 @@ def update_spec_force_convergence(spec, user_vasp_settings=None):
             update_set.update(user_vasp_settings["incar"])
     fw_spec['vasp']['incar'].update(update_set)
     old_struct=Poscar.from_dict(fw_spec["vasp"]["poscar"]).structure
-    if user_vasp_settings and user_vasp_settings.get("kpoints"):
-        kpoints_density = user_vasp_settings["kpoints"]["kpoints_density"]
+    # Hackish solution to deprecated kpoints settings
+    if fw_spec["mpsnl"]["about"].get("_kpoint_density", None):
+        kpoints_density = fw_spec["mpsnl"]["about"]["_kpoint_density"] 
     else:
         kpoints_density = 7000
     k=Kpoints.automatic_density(old_struct, kpoints_density)

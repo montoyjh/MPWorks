@@ -17,7 +17,7 @@ __date__ = 'Apr 24, 2013'
 
 # Parameters for spacegroup and mps_unique_id determination
 SPACEGROUP_TOLERANCE = 0.1  # as suggested by Shyue, 6/19/2012
-
+ANGLE_TOLERANCE = 1
 
 class SNLMongoAdapter(FWSerializable):
     def __init__(self, host='localhost', port=27017, db='snl', username=None,
@@ -90,7 +90,7 @@ class SNLMongoAdapter(FWSerializable):
 
             spstruc = snl.structure.copy()
             spstruc.remove_oxidation_states()
-            sf = SpacegroupAnalyzer(spstruc, SPACEGROUP_TOLERANCE)
+            sf = SpacegroupAnalyzer(spstruc, SPACEGROUP_TOLERANCE, ANGLE_TOLERANCE)
             sf.get_spacegroup()
             sgnum = sf.get_spacegroup_number() if sf.get_spacegroup_number() \
                 else -1
