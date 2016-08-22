@@ -84,10 +84,12 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             f = Composition(d_struct.formula).alphabetical_formula
             snl = StructureNL(d_struct, 'Joseph Montoya <montoyjh@lbl.gov>', 
                               projects=["Elasticity"])
+            if fw_spec["mpsnl"]["about"].get("_kpoints_density"):
+                snl["about"]["_kpoints_density"] = fw_spec["mpsnl"]["about"].get("_kpoints_density")
             tasks = [AddSNLTask()]
             snl_priority = fw_spec.get('priority', 1)
-            spec = {'task_type': 'Add Deformed Struct to SNL database', 
-                    'snl': snl.as_dict(), 
+            spec = {'task_type': 'Add Deformed Struct to SNL database',
+                    'snl': snl.as_dict(),
                     '_queueadapter': QA_DB, 
                     '_priority': snl_priority}
             if 'snlgroup_id' in fw_spec and isinstance(snl, MPStructureNL):
