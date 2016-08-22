@@ -84,9 +84,9 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             f = Composition(d_struct.formula).alphabetical_formula
             snl = StructureNL(d_struct, 'Joseph Montoya <montoyjh@lbl.gov>', 
                               projects=["Elasticity"])
-            if fw_spec["mpsnl"]["about"].get("_kpoints_density"):
-                snl["about"]["_kpoints_density"] = fw_spec["mpsnl"]["about"].get("_kpoints_density")
-                kpoints_density = snl["about"]["_kpoints_density"]
+            if fw_spec["mpsnl"].data.get("_kpoints_density", None):
+                snl.data["_kpoints_density"] = fw_spec["mpsnl"].data.get("_kpoints_density")
+                kpoints_density = snl.data["_kpoints_density"]
             else:
                 kpoints_density = None
             tasks = [AddSNLTask()]
