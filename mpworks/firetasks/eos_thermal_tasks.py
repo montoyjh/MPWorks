@@ -103,23 +103,17 @@ class SetupModifiedVolumeStructTask(FireTaskBase, FWSerializable):
                                 spec, name=get_slug(f + '--' + fw_spec['task_type']), fw_id=-999+i*10))
 
             priority = fw_spec['_priority']*3
-#            task_id_list.append(fw_spec["task_id"])
             spec = {'task_type': 'VASP db insertion', '_priority': priority,
                     '_allow_fizzled_parents': True, '_queueadapter': QA_DB, 'poisson_ratio': poisson_val,
                     'eqn_of_state_thermal':"modified_structure", 'clean_task_doc':True,
-                    'strainfactor':modified_struct_set.strainfactors[i], 'original_task_id':fw_spec["task_id"], 'original_task_id_list':task_id_list}
-            fws.append(Firework([VaspToDBTask(), AddEoSThermalDataToDBTask()], spec, name=get_slug(f + '--' + spec['task_type']), fw_id=-998+i*10))
+                    'strainfactor':modified_struct_set.strainfactors[i], 
+                    'original_task_id':fw_spec["task_id"],
+                    'original_task_id_list':task_id_list}
+            fws.append(Firework([VaspToDBTask(), AddEoSThermalDataToDBTask()], 
+                                spec, name=get_slug(f + '--' + spec['task_type']), 
+                                fw_id=-998+i*10))
             connections[-999+i*10] = [-998+i*10]
             wf.append(Workflow(fws, connections))
-#        fws=[]
-#        connections={}
-#        spec = {'task_type': 'Add EoS Thermal Data to DB Task', '_priority': priority,
-#         '_queueadapter': QA_DB, 'poisson_ratio': poisson_val}
-#        print("Calling firetask")
-#        fws.append(Firework([AddEoSThermalDataToDBTask()], spec,
-#                        name=get_slug(f + '--' + spec['task_type']),fw_id=-997+i*10))
-#        connections[-998+i*10] = [-997+i*10]
-#        wf.append(Workflow(fws, connections))
         return FWAction(additions=wf)        
 
 
@@ -140,7 +134,6 @@ class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
 	print("original_task_id = ", i)
         j = fw_spec['task_id']
 	print("task_id = ", j)
-
         with open(db_path) as f:
             db_creds = json.load(f)
         connection = MongoClient(db_creds['host'], db_creds['port'])
@@ -200,7 +193,7 @@ class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
         for k in tasks.find({"original_task_id": i}, {"strainfactor":1, "calculations.output":1, "state":1, "task_id":1}):
 #            defo = k['strainfactor']
 #            	print("In loop over k")
-            print("k = ", k)
+#            print("k = ", k)
 #            	print("k.keys = ", k.keys)            
             kenerg_atom = k['calculations'][0]['output']['final_energy_per_atom']
             print("Energy per atom = ", kenerg_atom)
@@ -268,9 +261,12 @@ class AddEoSThermalDataToDBTask(FireTaskBase, FWSerializable):
         
         if ndocs >= 21:
             eos_thermal_dict = {}
+            etp = eos_thermal_properties()
             # Perform thermal equation of state fitting and analysis
 #            eos_thermal_dict = eos_thermal_properties.eos_thermal_run(calc_struct, volume_values, energy_values, ieos=2)
-            eos_thermal_dict = eos_thermal_properties.eos_thermal_run(calc_struct, volume_values, energy_values, ieos=2, idebye=0, poissonratio=poisson_val)
+            eos_thermal_dict = etp.eos_thermal_run(calc_struct, volume_values, 
+                                                   energy_values, ieos=2, idebye=0, 
+                                                   poissonratio=poisson_val)
             
 	    # Test to check if results have been calculated
 	    print("Thermal conductivity = ", eos_thermal_dict["thermal_conductivity"])
