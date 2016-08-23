@@ -23,7 +23,7 @@ from mpworks.firetasks.vasp_setup_tasks import SetupUnconvergedHandlerTask
 from mpworks.workflows.wf_settings import QA_VASP, QA_DB, MOVE_TO_GARDEN_PROD, MOVE_TO_GARDEN_DEV
 from mpworks.workflows.wf_utils import last_relax, get_loc, move_to_garden
 from pymatgen import Composition
-from pymatgen.io.vaspio.vasp_input import Incar, Poscar, Potcar, Kpoints
+from pymatgen.io.vasp.inputs import Incar, Poscar, Potcar, Kpoints
 from pymatgen.matproj.snl import StructureNL
 
 __author__ = 'Anubhav Jain'
@@ -42,10 +42,10 @@ class VaspWriterTask(FireTaskBase, FWSerializable):
     _fw_name = "Vasp Writer Task"
 
     def run_task(self, fw_spec):
-        Incar.from_dict(fw_spec['vasp']['incar']).write_file('INCAR')
-        Poscar.from_dict(fw_spec['vasp']['poscar']).write_file('POSCAR')
-        Potcar.from_dict(fw_spec['vasp']['potcar']).write_file('POTCAR')
-        Kpoints.from_dict(fw_spec['vasp']['kpoints']).write_file('KPOINTS')
+        fw_spec['vasp']['incar'].write_file('INCAR')
+        fw_spec['vasp']['poscar'].write_file('POSCAR')
+        fw_spec['vasp']['potcar'].write_file('POTCAR')
+        fw_spec['vasp']['kpoints'].write_file('KPOINTS')
 
 
 class VaspCopyTask(FireTaskBase, FWSerializable):
@@ -159,16 +159,14 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
         sh = logging.StreamHandler(stream=sys.stdout)
         sh.setLevel(getattr(logging, 'INFO'))
         logger.addHandler(sh)
-
         with open(db_path) as f:
             db_creds = json.load(f)
-            drone = MPVaspDrone(
-                host=db_creds['host'], port=db_creds['port'],
-                database=db_creds['database'], user=db_creds['admin_user'],
-                password=db_creds['admin_password'],
-                collection=db_creds['collection'], parse_dos=parse_dos,
-                additional_fields=self.additional_fields,
-                update_duplicates=self.update_duplicates)
+            drone = MPVaspDrone(host=db_creds['host'], port=db_creds['port'],
+                                database=db_creds['database'], user=db_creds['admin_user'],
+                                password=db_creds['admin_password'],
+                                collection=db_creds['collection'], parse_dos=parse_dos,
+                                additional_fields=self.additional_fields,
+                                update_duplicates=self.update_duplicates)
             t_id, d = drone.assimilate(prev_dir, launches_coll=LaunchPad.auto_load().launches)
 
         mpsnl = d['snl_final'] if 'snl_final' in d else d['snl']
@@ -176,14 +174,38 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
         update_spec.update({'mpsnl': mpsnl, 'snlgroup_id': snlgroup_id})
 
         print 'ENTERED task id:', t_id
+#        print('d[state] = ', d['state'])
+#        print('d = ', d)
         stored_data = {'task_id': t_id}
         if d['state'] == 'successful':
-            update_spec['analysis'] = d['analysis']
-            update_spec['output'] = d['output']
-            return FWAction(stored_data=stored_data, update_spec=update_spec)
+            if 'strainfactor' in fw_spec['task_type']:
+                pass
+            else:
+                update_spec['analysis'] = d['analysis']
+                update_spec['output'] = d['output']
+                update_spec['vasp']={'incar':d['calculations'][-1]['input']['incar'],
+                                 'kpoints':d['calculations'][-1]['input']['kpoints']}
+                update_spec["task_id"]=t_id
+#                print('Update successful')
+#                print('update_spec[task_id] = ', update_spec['task_id'])
+                return FWAction(stored_data=stored_data, update_spec=update_spec)
+#            update_spec['analysis'] = d['analysis']
+#            update_spec['output'] = d['output']
+#            update_spec['vasp']={'incar':d['calculations'][-1]['input']['incar'],
+#                                 'kpoints':d['calculations'][-1]['input']['kpoints']}
+#            update_spec["task_id"]=t_id
+#            print('Update successful')
+#            print('update_spec[task_id] = ', update_spec['task_id'])
+#            if 'strainfactor' in fw_spec.keys():
+#                print("Updating strainfactor")
+#                update_spec['strainfactor'] = fw_spec['strainfactor']
+#                update_spec['original_task_id'] = fw_spec['original_task_id']
+#                print("update_spec[original_task_id] = ", update_spec['original_task_id'])
+#	    return FWAction(stored_data=stored_data, update_spec=update_spec)
 
         # not successful - first test to see if UnconvergedHandler is needed
         if not fizzled_parent:
+            print('Unsuccessful but not fizzled parent')
             unconverged_tag = 'unconverged_handler--{}'.format(fw_spec['prev_task_type'])
             output_dir = last_relax(os.path.join(prev_dir, 'vasprun.xml'))
             ueh = UnconvergedErrorHandler(output_filename=output_dir)
@@ -198,7 +220,18 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
                         'parameters': fw_spec.get('parameters'),
                         '_dupefinder': DupeFinderVasp().to_dict(),
                         '_priority': fw_spec['_priority']}
-
+                # Pass elastic tensor spec
+#                if 'deformed' in fw_spec['task_type']:
+#                    spec['deformation_matrix'] = fw_spec['deformation_matrix']
+#                    spec['original_task_id'] = fw_spec['original_task_id']
+                if 'deformation_matrix' in fw_spec.keys():
+                    spec['deformation_matrix'] = fw_spec['deformation_matrix']
+                    spec['original_task_id'] = fw_spec['original_task_id']
+                if 'strainfactor' in fw_spec['task_type']:
+#                    print("Updating strainfactor")
+                    spec['strainfactor'] = fw_spec['strainfactor']
+                    spec['original_task_id'] = fw_spec['original_task_id']
+#                    print("spec[original_task_id] = ", spec['original_task_id'])
                 snl = StructureNL.from_dict(spec['mpsnl'])
                 spec['run_tags'].append(unconverged_tag)
                 spec['_queueadapter'] = QA_VASP
@@ -218,12 +251,20 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
                 spec = {'task_type': 'VASP db insertion', '_allow_fizzled_parents': True,
                         '_priority': fw_spec['_priority'], '_queueadapter': QA_DB,
                         'run_tags': list(fw_spec['run_tags'])}
+                if 'deformation_matrix' in fw_spec.keys():
+                    spec['deformation_matrix'] = fw_spec['deformation_matrix']
+                    spec['original_task_id'] = fw_spec['original_task_id']
+                if 'strainfactor' in fw_spec.keys():
+#                    print("Updating strainfactor")
+                    spec['strainfactor'] = fw_spec['strainfactor']
+                    spec['original_task_id'] = fw_spec['original_task_id']
+#                    print("spec[original_task_id] = ", spec['original_task_id'])
                 spec['run_tags'].append(unconverged_tag)
                 fws.append(
                     Firework([VaspToDBTask()], spec, name=get_slug(f + '--' + spec['task_type']),
                              fw_id=-1))
                 connections[-2] = -1
-
+                print('Unsuccessful task updated')
                 wf = Workflow(fws, connections)
 
                 return FWAction(detours=wf)
