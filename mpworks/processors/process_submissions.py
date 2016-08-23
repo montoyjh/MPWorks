@@ -4,6 +4,7 @@ from fireworks.core.launchpad import LaunchPad
 from mpworks.snl_utils.mpsnl import MPStructureNL
 from mpworks.submission.submission_mongo import SubmissionMongoAdapter
 from mpworks.workflows.snl_to_wf import snl_to_wf
+from mpworks.workflows.snl_to_wf_elastic import snl_to_wf_elastic
 from mpworks.workflows.wf_utils import NO_POTCARS
 from pymatgen.matproj.snl import StructureNL
 
@@ -30,7 +31,7 @@ class SubmissionProcessor():
         while True:
             self.submit_all_new_workflows()
             print "Updating existing workflows..."
-            self.update_existing_workflows()
+            self.update_existing_workflows()  # for updating the display
             if not infinite:
                 break
             print 'sleeping', sleep_time
@@ -75,7 +76,10 @@ class SubmissionProcessor():
                     snl.data['_materialsproject']['submission_id'] = submission_id
 
                     # create a workflow
-                    wf = snl_to_wf(snl, job['parameters'])
+                    if "Elasticity" in snl.projects:
+                        wf=snl_to_wf_elastic(snl, job['parameters'])
+                    else:
+                        wf = snl_to_wf(snl, job['parameters'])
                     self.launchpad.add_wf(wf)
                     print 'ADDED WORKFLOW FOR {}'.format(snl.structure.formula)
             except:
@@ -87,6 +91,8 @@ class SubmissionProcessor():
 
     def update_existing_workflows(self):
         # updates the state of existing workflows by querying the FireWorks database
+        # this is an optional step that updates the submissions db with jobs info
+        # it is useful for the frontend display but not needed for workflow execution
         for submission in self.jobs.find({'state': {'$nin': ['COMPLETED', 'ERROR', 'REJECTED', 'CANCELLED']}},
                                          {'submission_id': 1}):
             submission_id = submission['submission_id']

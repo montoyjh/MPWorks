@@ -9,7 +9,7 @@ from mpworks.firetasks.vasp_io_tasks import VaspWriterTask, VaspCopyTask
 from mpworks.firetasks.vasp_setup_tasks import SetupStaticRunTask
 from pymatgen import Composition, Lattice
 from pymatgen.core.structure import Structure
-from pymatgen.io.vaspio_set import MPGGAVaspInputSet
+from pymatgen.io.vasp.sets import MPGGAVaspInputSet
 
 __author__ = 'Anubhav Jain'
 __copyright__ = 'Copyright 2013, The Materials Project'
@@ -51,7 +51,7 @@ def structure_to_wf(structure):
     spec['task_type'] = 'GGA optimize structure (2x) example'
 
     # set up the custodian that we want to run
-    jobs = VaspJob.double_relaxation_run('', gzipped=False)
+    jobs = VaspJob.double_relaxation_run('')
     for j in jobs: # turn off auto npar, it doesn't work for >1 node
             j.auto_npar = False
     handlers = [VaspErrorHandler(), FrozenJobErrorHandler(), MeshSymmetryErrorHandler(),
