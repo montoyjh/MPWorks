@@ -90,7 +90,7 @@ class SetupDeformedStructTask(FireTaskBase, FWSerializable):
             else:
                 kpoints_density = None
             tasks = [AddSNLTask()]
-            snl_priority = fw_spec.get('priority', 1)
+            snl_priority = fw_spec.get('_priority', 1)
             spec = {'task_type': 'Add Deformed Struct to SNL database',
                     'snl': snl.as_dict(),
                     '_queueadapter': QA_DB, 
@@ -186,7 +186,8 @@ class AddElasticDataToDBTask(FireTaskBase, FWSerializable):
             if dtype in d["deformation_tasks"].keys():
                 print "old_task: {}".format(d["deformation_tasks"][dtype]["task_id"])
                 print "new_task: {}".format(k["task_id"])
-                raise ValueError("Duplicate deformation task in database.")
+                old_stress = d["deformation_tasks"][dtype]["stress"]
+                d["warning"].append("Duplicate {} deformation task in database.".format(dtype))
             d["deformation_tasks"][dtype] = {"state" : k["state"],
                                              "deformation_matrix" : defo,
                                              "strain" : sm.tolist(),
@@ -194,7 +195,14 @@ class AddElasticDataToDBTask(FireTaskBase, FWSerializable):
             if k["state"] == "successful":
                 st = Stress(k["calculations"][-1]["output"] \
                             ["ionic_steps"][-1]["stress"])
-                ss_dict[sm] = st
+                try:
+                    d["deformation_tasks"][dtype]["stress"] = st.tolist()
+                    ss_dict[sm] = st
+                except:
+                    if (abs(st - Stress(old_stress)) < 5e-1).all():
+                        continue
+                    else:
+                        raise ValueError("Duplicate tasks have different stresses")
         d["snl"] = o["snl"]
         if "run_tags" in o.keys():
             d["run_tags"] = o["run_tags"]

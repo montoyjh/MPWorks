@@ -172,7 +172,7 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
         mpsnl = d['snl_final'] if 'snl_final' in d else d['snl']
         snlgroup_id = d['snlgroup_id_final'] if 'snlgroup_id_final' in d else d['snlgroup_id']
         update_spec.update({'mpsnl': mpsnl, 'snlgroup_id': snlgroup_id})
-
+        print "HEY HEY HEY {}".format(self.update_duplicates)
         print 'ENTERED task id:', t_id
         stored_data = {'task_id': t_id}
         if d['state'] == 'successful':
@@ -226,6 +226,7 @@ class VaspToDBTask(FireTaskBase, FWSerializable):
                 if 'deformation_matrix' in fw_spec.keys():
                     spec['deformation_matrix'] = fw_spec['deformation_matrix']
                     spec['original_task_id'] = fw_spec['original_task_id']
+                    del spec['_dupefinder']
                 spec['run_tags'].append(unconverged_tag)
                 fws.append(
                     Firework([VaspToDBTask()], spec, name=get_slug(f + '--' + spec['task_type']),
